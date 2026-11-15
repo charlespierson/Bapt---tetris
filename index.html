@@ -79,7 +79,7 @@ ol.rank .time{color:var(--muted);font-variant-numeric:tabular-nums}
     </div>
     <div class="tracks" id="tracks"></div>
     <div class="row"><button class="go" id="start" type="button">Départ</button></div>
-    <div class="keys">Clavier : J1 ← → et ↑ (nitro) · J2 A D et W · J3 J L et I · J4 pavé numérique 4 6 et 8 (positions des touches d'un clavier QWERTY). L'accélération est automatique.</div>
+    <div class="keys">Clavier : J1 ← → ↑ (nitro) ↓ (marche arrière) · J2 A D W S · J3 J L I K · J4 pavé numérique 4 6 8 5 (positions des touches d'un clavier QWERTY). L'accélération est automatique ; le bouton R sert à reculer.</div>
   </div>
 </div>
 
@@ -263,7 +263,7 @@ function paintStatic() {
 /* ---------- Partie ---------- */
 let track = TRACKS[0], trackIdx = 0, humans = 1, maxHumans = 4;
 let state = 'menu', cars = [], pickups = [], spawnT = 0, raceTime = 0, countT = 0, goT = 0, doneT = 0;
-const input = [0, 1, 2, 3].map(() => ({ kl: false, kr: false, tl: false, tr: false, nitro: false }));
+const input = [0, 1, 2, 3].map(() => ({ kl: false, kr: false, kb: false, tl: false, tr: false, tb: false, nitro: false }));
 
 let particles = [], shake = 0, banner = null, lastLapSaid = false, lastBeep = 0, humanKey = null;
 function puff(x, y, col, n, spd, r, life) {
@@ -277,7 +277,7 @@ function startRace(nHumans, newState) {
   const tr = track, order = [0, 1, 2, 3].sort(() => Math.random() - .5), skills = [.98, .94, .9, .86].sort(() => Math.random() - .5);
   cars = [];
   for (let k = 0; k < 4; k++) {
-    const slot = order[k], idx = tr.N - 6 - 8 * (slot >> 1), lat = (slot % 2 ? 1 : -1) * 28, human = k < nHumans;
+    const slot = order[k], idx = tr.N - 7 - 9 * (slot >> 1), lat = (slot % 2 ? 1 : -1) * 26, human = k < nHumans;
     cars.push({ id: k, human, auto: !human, color: COLORS[k], name: human ? 'Joueur ' + (k + 1) : 'Ordi ' + COLORS[k].name.toLowerCase(),
       x: tr.sx[idx] - tr.ty[idx] * lat, y: tr.sy[idx] + tr.tx[idx] * lat, a: Math.atan2(tr.ty[idx], tr.tx[idx]), vx: 0, vy: 0,
       prog: idx, lap: 0, nitro: 3, boost: 0, finished: false, time: 0, offT: 0, stuckT: 0, rank: k + 1, slip: 0, air: 0, airDur: 1, dustT: 0,
@@ -300,6 +300,7 @@ function stepCar(c, dt, go) {
   } else {
     const i = input[c.id]; steer = ((i.kr || i.tr) ? 1 : 0) - ((i.kl || i.tl) ? 1 : 0);
     if (i.nitro) { fire = go; i.nitro = false; }
+    if (go && (i.kb || i.tb)) throttle = -.65;      // marche arrière
   }
   if (fire && c.nitro > 0 && c.boost <= 0) { c.nitro--; c.boost = 1.2; sfx.nitro(c.human); }
   if (c.boost > 0) c.boost -= dt;
@@ -332,7 +333,7 @@ function stepCar(c, dt, go) {
   c.x += c.vx * dt; c.y += c.vy * dt;
 
   // barrières : la voiture rebondit sur les bords de la piste
-  nearest(tr, c.x, c.y); const lim = tr.half - 14;
+  nearest(tr, c.x, c.y); const lim = tr.half - 20;
   if (nd > lim) {
     const nx = (c.x - tr.sx[ni]) / nd, ny = (c.y - tr.sy[ni]) / nd, vn = c.vx * nx + c.vy * ny;
     c.x = tr.sx[ni] + nx * lim; c.y = tr.sy[ni] + ny * lim;
@@ -371,8 +372,8 @@ function update(dt) {
   for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
     const a = cars[i], b = cars[j]; if (a.air > 0 || b.air > 0) continue;
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
-    if (d < 36 && d > .01) {
-      const nx = dx / d, ny = dy / d, push = (36 - d) / 2; a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+    if (d < 42 && d > .01) {
+      const nx = dx / d, ny = dy / d, push = (42 - d) / 2; a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
       const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
       if (rel < 0) {
         const imp = rel * .9; a.vx += nx * imp; a.vy += ny * imp; b.vx -= nx * imp; b.vy -= ny * imp;
@@ -388,7 +389,7 @@ function update(dt) {
     }
     for (let k = pickups.length - 1; k >= 0; k--) {
       const p = pickups[k]; p.age += dt;
-      for (const c of cars) if (!c.air && Math.hypot(c.x - p.x, c.y - p.y) < 32) { c.nitro = Math.min(9, c.nitro + 1); puff(p.x, p.y, '#8fe0ff', 8, 120, 4, .4); if (c.human) sfx.pickup(); pickups.splice(k, 1); break; }
+      for (const c of cars) if (!c.air && Math.hypot(c.x - p.x, c.y - p.y) < 36) { c.nitro = Math.min(9, c.nitro + 1); puff(p.x, p.y, '#8fe0ff', 8, 120, 4, .4); if (c.human) sfx.pickup(); pickups.splice(k, 1); break; }
     }
   }
   for (let k = particles.length - 1; k >= 0; k--) { const p = particles[k]; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - 3 * dt; p.vy *= 1 - 3 * dt; if ((p.life -= dt) <= 0) particles.splice(k, 1); }
@@ -408,11 +409,11 @@ function layoutButtons() {
     const flip = p >= 2, sideRight = p % 2 === 1;
     const L = (flip ? safe.r : safe.l) + m, Rr = (flip ? safe.l : safe.r) + m, by = VH - (flip ? safe.t : safe.b) - m - r;
     if (nH === 1) {
-      add(p, 'left', L + r, by, r, false); add(p, 'right', L + 3 * r + g, by, r, false); add(p, 'nitro', VW - Rr - r * 1.15, by - r * .15, r * 1.15, false);
+      add(p, 'left', L + r, by, r, false); add(p, 'right', L + 3 * r + g, by, r, false); add(p, 'nitro', VW - Rr - r * 1.15, by - r * .15, r * 1.15, false); add(p, 'back', VW - Rr - r * 3.2 - g, by + r * .2, r * .8, false);
     } else if (!sideRight) {
-      add(p, 'left', L + r, by, r, flip); add(p, 'right', L + 3 * r + g, by, r, flip); add(p, 'nitro', L + 5 * r + 2 * g, by, r, flip);
+      add(p, 'left', L + r, by, r, flip); add(p, 'right', L + 3 * r + g, by, r, flip); add(p, 'nitro', L + 5 * r + 2 * g, by, r, flip); add(p, 'back', L + 6.8 * r + 3 * g, by + r * .2, r * .8, flip);
     } else {
-      add(p, 'nitro', VW - Rr - 5 * r - 2 * g, by, r, flip); add(p, 'left', VW - Rr - 3 * r - g, by, r, flip); add(p, 'right', VW - Rr - r, by, r, flip);
+      add(p, 'back', VW - Rr - 6.8 * r - 3 * g, by + r * .2, r * .8, flip); add(p, 'nitro', VW - Rr - 5 * r - 2 * g, by, r, flip); add(p, 'left', VW - Rr - 3 * r - g, by, r, flip); add(p, 'right', VW - Rr - r, by, r, flip);
     }
   }
 }
@@ -420,8 +421,8 @@ const pointers = new Map();
 function viewPos(e) { const b = cv.getBoundingClientRect(), x = e.clientX - b.left, y = e.clientY - b.top; return rot ? [y, CW - x] : [x, y]; }
 function hit(x, y) { let best = -1, bd = 1e9; buttons.forEach((b, i) => { const d = Math.hypot(b.x - x, b.y - y); if (d < b.r * 1.4 && d < bd) { bd = d; best = i; } }); return best; }
 function syncTouch() {
-  for (const i of input) { i.tl = false; i.tr = false; }
-  for (const bi of pointers.values()) { const b = buttons[bi]; if (!b) continue; if (b.act === 'left') input[b.p].tl = true; if (b.act === 'right') input[b.p].tr = true; }
+  for (const i of input) { i.tl = false; i.tr = false; i.tb = false; }
+  for (const bi of pointers.values()) { const b = buttons[bi]; if (!b) continue; if (b.act === 'left') input[b.p].tl = true; if (b.act === 'right') input[b.p].tr = true; if (b.act === 'back') input[b.p].tb = true; }
 }
 cv.addEventListener('pointerdown', e => {
   if (state === 'menu') return; e.preventDefault();
@@ -429,15 +430,15 @@ cv.addEventListener('pointerdown', e => {
   pointers.set(e.pointerId, bi); if (buttons[bi].act === 'nitro') input[buttons[bi].p].nitro = true; syncTouch();
 });
 cv.addEventListener('pointermove', e => {
-  if (!pointers.has(e.pointerId)) return; const old = buttons[pointers.get(e.pointerId)]; if (!old || old.act === 'nitro') return;
+  if (!pointers.has(e.pointerId)) return; const old = buttons[pointers.get(e.pointerId)]; if (!old || (old.act !== 'left' && old.act !== 'right')) return;
   const [x, y] = viewPos(e), bi = hit(x, y);
-  if (bi >= 0 && buttons[bi].p === old.p && buttons[bi].act !== 'nitro') { pointers.set(e.pointerId, bi); syncTouch(); }
+  if (bi >= 0 && buttons[bi].p === old.p && (buttons[bi].act === 'left' || buttons[bi].act === 'right')) { pointers.set(e.pointerId, bi); syncTouch(); }
 });
 const release = e => { if (pointers.delete(e.pointerId)) syncTouch(); };
 cv.addEventListener('pointerup', release); cv.addEventListener('pointercancel', release);
 cv.addEventListener('contextmenu', e => e.preventDefault());
 
-const KEYS = { ArrowLeft: [0, 'kl'], ArrowRight: [0, 'kr'], ArrowUp: [0, 'n'], Space: [0, 'n'], KeyA: [1, 'kl'], KeyD: [1, 'kr'], KeyW: [1, 'n'],
+const KEYS = { ArrowLeft: [0, 'kl'], ArrowRight: [0, 'kr'], ArrowUp: [0, 'n'], Space: [0, 'n'], ArrowDown: [0, 'kb'], KeyA: [1, 'kl'], KeyD: [1, 'kr'], KeyW: [1, 'n'], KeyS: [1, 'kb'], KeyK: [2, 'kb'], Numpad5: [3, 'kb'],
   KeyJ: [2, 'kl'], KeyL: [2, 'kr'], KeyI: [2, 'n'], Numpad4: [3, 'kl'], Numpad6: [3, 'kr'], Numpad8: [3, 'n'] };
 addEventListener('keydown', e => { const k = KEYS[e.code]; if (!k || state === 'menu' || state === 'done') return; e.preventDefault(); if (k[1] === 'n') { if (!e.repeat) input[k[0]].nitro = true; } else input[k[0]][k[1]] = true; });
 addEventListener('keyup', e => { const k = KEYS[e.code]; if (k && k[1] !== 'n') input[k[0]][k[1]] = false; });
@@ -447,11 +448,13 @@ function bolt(c, s) { c.beginPath(); c.moveTo(2 * s, -9 * s); c.lineTo(-5 * s, 1
 function drawCar(c) {
   const z = c.air > 0 ? Math.sin(Math.PI * (1 - c.air / c.airDur)) : 0, s = 1 + z * .45;
   ctx.save(); ctx.translate(c.x, c.y);
-  ctx.fillStyle = 'rgba(0,0,0,.26)'; ctx.beginPath(); ctx.ellipse(4 + z * 20, 6 + z * 26, 28, 23, c.a, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.26)'; ctx.beginPath(); ctx.ellipse(4 + z * 20, 6 + z * 26, 32, 27, c.a, 0, TAU); ctx.fill();
+  ctx.globalAlpha = .5; disc(ctx, 0, 0, 41 * s, c.color.body); ctx.globalAlpha = 1;
+  ctx.lineWidth = c.human ? 5 : 2.5; ctx.strokeStyle = c.human ? '#ffffff' : 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(0, 0, 41 * s, 0, TAU); ctx.stroke();
   ctx.rotate(c.a); ctx.scale(s, s);
-  if (c.boost > 0) { ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.moveTo(-26, -8); ctx.lineTo(-50 - Math.random() * 16, 0); ctx.lineTo(-26, 8); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.moveTo(-26, -4); ctx.lineTo(-40 - Math.random() * 8, 0); ctx.lineTo(-26, 4); ctx.closePath(); ctx.fill(); }
-  if (c.color.sprite) { const im = c.color.sprite, w = 60, h = w * im.height / im.width; ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.restore(); return; }
-  ctx.scale(1.5, 1.5);
+  if (c.boost > 0) { ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.moveTo(-31, -9); ctx.lineTo(-58 - Math.random() * 18, 0); ctx.lineTo(-31, 9); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.moveTo(-31, -4); ctx.lineTo(-46 - Math.random() * 8, 0); ctx.lineTo(-31, 4); ctx.closePath(); ctx.fill(); }
+  if (c.color.sprite) { const im = c.color.sprite, w = 70, h = w * im.height / im.width; ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.restore(); return; }
+  ctx.scale(1.75, 1.75);
   ctx.fillStyle = '#1d1e24'; for (const [x, y] of [[-15, -13], [-15, 7], [8, -13], [8, 7]]) { rr(ctx, x, y, 11, 6, 2.5); ctx.fill(); }
   ctx.fillStyle = c.color.body; rr(ctx, -17, -9, 35, 18, 6); ctx.fill();
   ctx.fillStyle = c.color.dark; rr(ctx, -19, -10, 5, 20, 2); ctx.fill(); rr(ctx, -6, -6.5, 13, 13, 4); ctx.fill();
@@ -462,17 +465,18 @@ function ord(n) { return n === 1 ? '1er' : n + 'e'; }
 function drawHud() {
   const nH = cars.filter(c => c.human).length;
   for (const b of buttons) {
-    const c = cars[b.p], i = input[b.p], down = b.act === 'left' ? (i.kl || i.tl) : b.act === 'right' ? (i.kr || i.tr) : c.boost > 0;
+    const c = cars[b.p], i = input[b.p], down = b.act === 'left' ? (i.kl || i.tl) : b.act === 'right' ? (i.kr || i.tr) : b.act === 'back' ? (i.kb || i.tb) : c.boost > 0;
     ctx.save(); ctx.translate(b.x, b.y); if (b.flip) ctx.rotate(Math.PI);
-    ctx.globalAlpha = down ? .95 : .62; ctx.fillStyle = b.act === 'nitro' ? (c.nitro > 0 ? '#12b5f5' : '#6b7285') : c.color.body;
+    ctx.globalAlpha = down ? .95 : .62; ctx.fillStyle = b.act === 'nitro' ? (c.nitro > 0 ? '#12b5f5' : '#6b7285') : b.act === 'back' ? '#2b3040' : c.color.body;
     ctx.beginPath(); ctx.arc(0, 0, b.r, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke(); ctx.fillStyle = '#fff';
     if (b.act === 'nitro') { ctx.save(); ctx.translate(-b.r * .28, 0); bolt(ctx, b.r / 16); ctx.restore(); ctx.font = `800 ${Math.round(b.r * .72)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(c.nitro, b.r * .34, 1); }
+    else if (b.act === 'back') { ctx.font = `800 ${Math.round(b.r * .95)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('R', 0, 2); }
     else { const s = b.act === 'left' ? -1 : 1, q = b.r * .38; ctx.beginPath(); ctx.moveTo(s * q, 0); ctx.lineTo(-s * q * .7, -q); ctx.lineTo(-s * q * .7, q); ctx.closePath(); ctx.fill(); }
     ctx.restore();
   }
   for (let p = 0; p < nH; p++) {
-    const bs = buttons.filter(b => b.p === p && (nH > 1 || b.act !== 'nitro')), c = cars[p]; if (!bs.length) continue;
+    const bs = buttons.filter(b => b.p === p && (nH > 1 || b.act === 'left' || b.act === 'right')), c = cars[p]; if (!bs.length) continue;
     const flip = bs[0].flip, r = bs[0].r, cx = bs.reduce((s, b) => s + b.x, 0) / bs.length, cy = bs[0].y + (flip ? 1 : -1) * (r + 22);
     const txt = c.finished ? ord(c.rank) + ' · Arrivé' : ord(c.rank) + ' · Tour ' + Math.max(1, Math.min(LAPS, c.lap)) + '/' + LAPS;
     ctx.save(); ctx.translate(cx, cy); if (flip) ctx.rotate(Math.PI);
