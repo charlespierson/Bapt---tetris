@@ -198,11 +198,15 @@ function drawDeco(c, tr, d) {
 const HAZ = { water: ['#5fb7e8', '#8fd0f2'], mud: ['#5f4028', '#775335'], soft: ['#f6e6bd', '#fff3d2'], oil: ['#22242b', '#3a3550'] };
 function drawTrack(c, tr, light) {
   const th = tr.def.theme, W = tr.def.width;
+  const art = !!tr.roadLayer; if (art) light = true;
   c.fillStyle = th.ground; c.fillRect(0, 0, WORLD_W, WORLD_H);
+  if (art) c.drawImage(tr.groundImg, 0, 0, WORLD_W, WORLD_H);
   if (!light) for (const d of tr.deco) if (d.v < .5 || tr.def.deco === 'parking') drawDeco(c, tr, d);
   c.lineJoin = 'round'; c.lineCap = 'round';
-  trackPath(c, tr); c.strokeStyle = th.edge; c.lineWidth = W + 14; c.stroke();
-  trackPath(c, tr); c.strokeStyle = th.road; c.lineWidth = W; c.stroke();
+  if (art) { trackPath(c, tr); c.strokeStyle = 'rgba(0,0,0,.16)'; c.lineWidth = W + 30; c.stroke(); }
+  trackPath(c, tr); c.strokeStyle = th.edge; c.lineWidth = W + (art ? 10 : 14); c.stroke();
+  if (art) c.drawImage(tr.roadLayer, 0, 0);
+  else { trackPath(c, tr); c.strokeStyle = th.road; c.lineWidth = W; c.stroke(); }
   if (tr.def.deco === 'parking') { c.save(); c.setLineDash([26, 30]); c.lineCap = 'butt'; trackPath(c, tr); c.strokeStyle = 'rgba(255,255,255,.4)'; c.lineWidth = 3; c.stroke(); c.restore(); }
   // ligne de départ en damier
   c.save(); c.translate(tr.sx[0], tr.sy[0]); c.rotate(Math.atan2(tr.ty[0], tr.tx[0]));
@@ -392,6 +396,7 @@ function drawCar(c) {
   ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.a);
   ctx.fillStyle = 'rgba(0,0,0,.22)'; rr(ctx, -17, -9, 38, 24, 7); ctx.fill();
   if (c.boost > 0) { ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.moveTo(-18, -6); ctx.lineTo(-34 - Math.random() * 12, 0); ctx.lineTo(-18, 6); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.moveTo(-18, -3); ctx.lineTo(-27 - Math.random() * 6, 0); ctx.lineTo(-18, 3); ctx.closePath(); ctx.fill(); }
+  if (c.color.sprite) { const im = c.color.sprite, w = 48, h = w * im.height / im.width; ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.restore(); return; }
   ctx.fillStyle = '#1d1e24'; for (const [x, y] of [[-15, -13], [-15, 7], [8, -13], [8, 7]]) { rr(ctx, x, y, 11, 6, 2.5); ctx.fill(); }
   ctx.fillStyle = c.color.body; rr(ctx, -17, -9, 35, 18, 6); ctx.fill();
   ctx.fillStyle = c.color.dark; rr(ctx, -19, -10, 5, 20, 2); ctx.fill(); rr(ctx, -6, -6.5, 13, 13, 4); ctx.fill();
@@ -463,7 +468,7 @@ function buildTrackButtons() {
   const box = $('tracks');
   TRACKS.forEach((tr, i) => {
     const b = document.createElement('button'); b.type = 'button'; b.id = 'track-' + i; b.setAttribute('aria-pressed', i === trackIdx);
-    const c = document.createElement('canvas'); c.width = 320; c.height = 180; const x = c.getContext('2d'); x.scale(.2, .2); drawTrack(x, tr, true);
+    const c = document.createElement('canvas'); c.width = 320; c.height = 180; const x = c.getContext('2d'); x.scale(.2, .2); drawTrack(x, tr, true); tr.thumb = x;
     const s = document.createElement('span'); s.textContent = tr.def.name; b.append(c, s);
     b.onclick = () => { trackIdx = i; track = tr; [...box.children].forEach((el, k) => el.setAttribute('aria-pressed', k === i)); paintStatic(); startRace(0, 'menu'); };
     box.appendChild(b);
@@ -492,6 +497,25 @@ function begin() {
 function toMenu() { results.hidden = true; quit.hidden = true; menu.hidden = false; startRace(0, 'menu'); layoutButtons(); }
 $('start').onclick = begin; $('again').onclick = begin; $('toMenu').onclick = toMenu; quit.onclick = toMenu;
 
+/* ---------- Illustrations (dossier assets/, facultatif : sans elles le jeu garde son dessin simple) ---------- */
+function loadImg(src, cb) { const im = new Image(); im.onload = () => cb(im); im.src = src; }
+function artReady(tr) {
+  if (!tr.groundImg || !tr.roadImg) return;
+  const l = document.createElement('canvas'); l.width = WORLD_W; l.height = WORLD_H; const c = l.getContext('2d');
+  c.lineJoin = 'round'; c.lineCap = 'round'; trackPath(c, tr); c.lineWidth = tr.def.width; c.stroke();
+  c.globalCompositeOperation = 'source-in'; c.drawImage(tr.roadImg, 0, 0, WORLD_W, WORLD_H);
+  tr.roadLayer = l;
+  if (tr.thumb) drawTrack(tr.thumb, tr, true);
+  if (tr === track) paintStatic();
+}
+function loadArt() {
+  TRACKS.forEach((tr, i) => {
+    loadImg('assets/ground' + i + '.jpg', im => { tr.groundImg = im; artReady(tr); });
+    loadImg('assets/road' + i + '.jpg', im => { tr.roadImg = im; artReady(tr); });
+  });
+  COLORS.forEach((c, k) => loadImg('assets/car' + k + '.png', im => { c.sprite = im; }));
+}
+
 /* ---------- Boucle ---------- */
 let last = 0, acc = 0;
 function frame(ts) {
@@ -502,6 +526,7 @@ function frame(ts) {
 buildTrackButtons();
 startRace(0, 'menu');
 resize();
+loadArt();
 addEventListener('resize', () => { resize(); layoutButtons(); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {});
 window.__mb = { get state() { return state; }, get cars() { return cars; }, update, tracks: TRACKS };
