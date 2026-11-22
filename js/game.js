@@ -3,7 +3,7 @@
 let track = TRACKS[0], trackIdx = 0, gstate = 'menu', cars = [], raceTime = 0, countT = 0, goT = 0, doneT = 0, banner = null, shake = 0, simTime = 0;
 let LAPS = 5, humanKey = null, lastLapSaid = false, lastBeep = 0, wrenchT = 6, onRaceEnd = null;
 let missiles = [], mines = [], oils = [], boxes = [], wrenches = [], props = [], booms = [];
-const input = [0, 1, 2, 3].map(() => ({ kl: false, kr: false, kb: false, tl: false, tr: false, tb: false, fire: false }));
+const input = [0, 1, 2, 3].map(() => ({ kl: false, kr: false, kb: false, tl: false, tr: false, tb: false, fire: false, sa: 0, sm: 0 }));   // sa/sm : direction et force du joystick
 const carVis = [];
 const stats = { wrecks: 0, items: 0, jumps: 0, loops: 0, booms: 0, parts: 0 };
 const ITEMS = ['turbo', 'missile', 'oil', 'mine', 'shield', 'shock'];
@@ -32,7 +32,7 @@ function startRace(nHumans, newState) {
     if (!carVis[k]) carVis[k] = makeCarVis(k);
     const vis = carVis[k], g = track.grid(order[k]), human = k < nHumans; resetCarVis(vis); dynGroup.add(vis.root, vis.ring);
     cars.push({ id: k, human, auto: !human, color: CAR_COLORS[k], name: human ? 'Joueur ' + (k + 1) : 'Ordi ' + CAR_COLORS[k].name.toLowerCase(), vis,
-      x: g.x, z: g.z, a: g.a, vx: 0, vz: 0, y: 0, vy: 0, spin: 0, air: false, ramp: null, loop: null, tumble: 0, tumbleRate: 0, sus: 0, susV: 0, pitchV: 0, rollV: 0, steerV: 0, slip: 0,
+      x: g.x, z: g.z, a: g.a, vx: 0, vz: 0, y: 0, vy: 0, spin: 0, air: false, ramp: null, loop: null, tumble: 0, tumbleRate: 0, sus: 0, susV: 0, pitchV: 0, rollV: 0, steerV: 0, steerH: 0, slip: 0,
       prog: g.i, lap: 0, hp: 100, stage: 0, wheelOff: -1, item: 'turbo', pending: null, roul: 0, boost: 0, shield: 0, spinOut: 0, spinDir: 1, oilImm: 0, dead: 0, inv: 0, hitT: 0, wallCd: 0, itemT: 1.8,
       finished: false, time: 0, rank: k + 1, offT: 0, stuckT: 0, revN: 0, dustT: 0, smokeT: 0,
       power: human ? 1 : skills[k], base: skills[k], aiOff: rnd(90), aiLat: 0, aiLook: 13 + Math.floor(Math.random() * 5), aiRev: 0, aiItemT: 1 + Math.random() * 3 });
@@ -80,7 +80,7 @@ function wreck(c) {
 }
 function respawn(c, repaired) {
   const tr = track, j = c.prog; c.x = tr.sx[j]; c.z = tr.sz[j]; c.a = Math.atan2(tr.tz[j], tr.tx[j]); c.vx = c.vz = c.vy = 0; c.y = 0; c.spin = 0; c.tumble = 0; c.tumbleRate = 0; c.air = false; c.ramp = null; c.loop = null;
-  c.offT = c.stuckT = 0; c.revN = 0; c.aiRev = 0; c.dead = 0; c.inv = 2;
+  c.offT = c.stuckT = 0; c.revN = 0; c.aiRev = 0; c.dead = 0; c.inv = 2; c.steerH = 0;
   if (repaired) { c.hp = 100; c.stage = 0; c.wheelOff = -1; refreshVis(c); if (c.human) sfx.repair(); }
 }
 function repairCar(c, amt) {
@@ -212,7 +212,20 @@ function stepCar(c, dt, go) {
 
   let steer = 0, throttle = go ? 1 : 0, fire = false;
   if (c.auto) { const o = aiControl(c, dt, go); steer = o.steer; throttle = o.throttle; fire = o.fire; }
-  else { const i = input[c.id]; steer = ((i.kr || i.tr) ? 1 : 0) - ((i.kl || i.tl) ? 1 : 0); if (i.fire) { fire = go; i.fire = false; } if (go && (i.kb || i.tb)) throttle = -.65; }
+  else {
+    const i = input[c.id]; if (i.fire) { fire = go; i.fire = false; } if (go && (i.kb || i.tb)) throttle = -.65;
+    if (i.sm > 0) {
+      // joystick : on pointe la direction voulue à l'écran, la voiture s'oriente d'elle-même vers elle
+      const vf0 = c.vx * Math.cos(c.a) + c.vz * Math.sin(c.a), diff = wrapPi(i.sa - c.a);
+      steer = clamp(diff * 2.6, -1, 1) * i.sm; if (vf0 < -20) steer = -steer;        // en marche arrière, l'avant pivote quand même vers la direction voulue
+      if (Math.abs(diff) > 1.5 && vf0 > 260 && throttle > 0) throttle = .35;           // demi-tour demandé : on lève le pied pour tourner plus court
+      c.steerH = steer;
+    } else {
+      // boutons et clavier : le braquage monte en 0,1 s environ, ce qui permet de petites corrections par petites touches
+      const raw = ((i.kr || i.tr) ? 1 : 0) - ((i.kl || i.tl) ? 1 : 0), up = raw !== 0 && raw * c.steerH >= 0;
+      c.steerH += (raw - c.steerH) * Math.min(1, dt * (up ? 10 : 20)); steer = c.steerH;
+    }
+  }
   if (c.spinOut > 0) steer = 0;
   c.steerV += (steer - c.steerV) * Math.min(1, dt * 10);
   if (fire && c.item && !c.loop) useItem(c);
@@ -245,7 +258,8 @@ function stepCar(c, dt, go) {
     let vf = c.vx * fx + c.vz * fz, vl = -c.vx * fz + c.vz * fx;
     vf += (accel * throttle - drag * vf) * dt; vl *= Math.exp(-grip * dt); c.slip = Math.abs(vl);
     let st = steer; if (c.wheelOff >= 0) st += (c.wheelOff % 2 ? .25 : -.25) * Math.min(1, Math.abs(vf) / 200);
-    c.a += (st * 3.2 * clamp(vf / 120, -1, 1) + c.spin) * dt; c.spin *= Math.exp(-5 * dt);
+    const turn = 3.3 - 1.1 * clamp((Math.abs(vf) - 320) / 420, 0, 1);              // direction un peu moins vive à pleine vitesse (turbo)
+    c.a += (st * turn * clamp(vf / 120, -1, 1) + c.spin) * dt; c.spin *= Math.exp(-5 * dt);
     c.vx = fx * vf - fz * vl; c.vz = fz * vf + fx * vl;
     for (const p of tr.pads) { const dx = c.x - p.x, dz = c.z - p.z; if (Math.abs(dx * p.ca + dz * p.sa) < p.len / 2 && Math.abs(-dx * p.sa + dz * p.ca) < p.w / 2 + 10) { if (c.boost < .4 && c.human) sfx.pad(); c.boost = Math.max(c.boost, .95); } }
     for (const L of tr.loops) {

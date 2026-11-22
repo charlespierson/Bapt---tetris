@@ -7,7 +7,9 @@ const ITEM_COL = { turbo: '#12b5f5', missile: '#e5383b', oil: '#30323c', mine: '
 const PV = { x: 0, y: 0 };
 let CW = 1, CH = 1, VW = 1, VH = 1, dpr = 1, dprCap = 2, rot = false, safe = { t: 0, r: 0, b: 0, l: 0 };
 let humans = 1, maxHumans = 4, camMode = 'close', buttons = [], miniCache = null, lowShadow = false, perfT = 0, perfN = 0;
-try { camMode = localStorage.getItem('mb-cam') === 'whole' ? 'whole' : 'close'; } catch (e) {}
+let ctrlMode = coarse ? 'stick' : 'buttons';
+const sticks = [null, null, null, null], stickPtr = new Map();
+try { camMode = localStorage.getItem('mb-cam') === 'whole' ? 'whole' : 'close'; const cm = localStorage.getItem('mb-ctrl'); if (cm === 'stick' || cm === 'buttons') ctrlMode = cm; } catch (e) {}
 
 function resize() {
   CW = hud.clientWidth || innerWidth; CH = hud.clientHeight || innerHeight;
@@ -26,10 +28,27 @@ function resize() {
 function layoutButtons() {
   buttons = []; if (gstate !== 'countdown' && gstate !== 'race') return;
   const r = Math.max(26, Math.min(44, VH * .085)), m = 12, g = 10, nH = cars.filter(c => c.human).length;
-  const add = (p, act, lx, ly, rad, flip) => buttons.push({ p, act, r: rad, flip, x: flip ? VW - lx : lx, y: flip ? VH - ly : ly });
+  const add = (p, act, lx, ly, rad, flip) => { const b = { p, act, r: rad, flip, x: flip ? VW - lx : lx, y: flip ? VH - ly : ly }; buttons.push(b); return b; };
+  const rs = Math.max(48, Math.min(70, VH * .13));                                   // rayon du joystick
+  // zone tactile du joystick : un rectangle donné côté joueur, retourné pour les joueurs assis en face
+  const zone = (b, x0, y0, x1, y1) => { b.zone = b.flip ? { x0: VW - x1, y0: VH - y1, x1: VW - x0, y1: VH - y0 } : { x0, y0, x1, y1 }; };
   for (let p = 0; p < nH; p++) {
     const flip = p >= 2, sideRight = p % 2 === 1;
     const L = (flip ? safe.r : safe.l) + m, Rr = (flip ? safe.l : safe.r) + m, by = VH - (flip ? safe.t : safe.b) - m - r;
+    if (ctrlMode === 'stick') {
+      const sy = VH - (flip ? safe.t : safe.b) - m - rs, top = nH > 2 ? VH * .56 : VH * .34;
+      if (nH === 1) {
+        zone(add(p, 'stick', L + rs, sy, rs, false), 0, top, VW * .5, VH);
+        add(p, 'fire', VW - Rr - r * 1.2, by - r * .2, r * 1.2, false); add(p, 'back', VW - Rr - r * 3.3 - g, by + r * .2, r * .8, false);
+      } else if (!sideRight) {
+        const f = add(p, 'fire', L + 2 * rs + g + r, by - r * .3, r, flip); add(p, 'back', L + 2 * rs + 2 * g + 2.6 * r, by + r * .25, r * .8, flip);
+        zone(add(p, 'stick', L + rs, sy, rs, flip), 0, top, L + 2 * rs + g * .5, VH);
+      } else {
+        add(p, 'fire', VW - Rr - 2 * rs - g - r, by - r * .3, r, flip); add(p, 'back', VW - Rr - 2 * rs - 2 * g - 2.6 * r, by + r * .25, r * .8, flip);
+        zone(add(p, 'stick', VW - Rr - rs, sy, rs, flip), VW - Rr - 2 * rs - g * .5, top, VW, VH);
+      }
+      continue;
+    }
     if (nH === 1) {
       add(p, 'left', L + r, by, r, false); add(p, 'right', L + 3 * r + g, by, r, false);
       add(p, 'fire', VW - Rr - r * 1.2, by - r * .2, r * 1.2, false); add(p, 'back', VW - Rr - r * 3.3 - g, by + r * .2, r * .8, false);
@@ -42,22 +61,36 @@ function layoutButtons() {
 }
 const pointers = new Map();
 function viewPos(e) { const b = hud.getBoundingClientRect(), x = e.clientX - b.left, y = e.clientY - b.top; return rot ? [y, CW - x] : [x, y]; }
-function hitButton(x, y) { let best = -1, bd = 1e9; buttons.forEach((b, i) => { const d = Math.hypot(b.x - x, b.y - y); if (d < b.r * 1.4 && d < bd) { bd = d; best = i; } }); return best; }
+function hitButton(x, y) { let best = -1, bd = 1e9; buttons.forEach((b, i) => { if (b.act === 'stick') return; const d = Math.hypot(b.x - x, b.y - y); if (d < b.r * 1.4 && d < bd) { bd = d; best = i; } }); return best; }
+function hitStick(x, y) { return buttons.find(b => b.act === 'stick' && !sticks[b.p] && x >= b.zone.x0 && x <= b.zone.x1 && y >= b.zone.y0 && y <= b.zone.y1); }
+function moveStick(s, x, y) {
+  let dx = x - s.bx, dy = y - s.by, d = Math.hypot(dx, dy);
+  if (d > s.r) { s.bx += dx * (1 - s.r / d); s.by += dy * (1 - s.r / d); dx = x - s.bx; dy = y - s.by; d = s.r; }   // le socle suit le doigt s'il va trop loin
+  s.kx = x; s.ky = y; const inp = input[s.p];
+  if (d < 7) { inp.sm = 0; return; }                                                  // petite zone morte : rien ne bouge
+  // le geste est pris tel qu'il est sur la vitre, même pour les joueurs assis en face : la voiture part là où va le doigt
+  s.dx = dx / d; s.dy = dy / d;
+  inp.sa = Math.atan2(dy / Math.cos(CAM.tilt), dx); inp.sm = Math.min(1, (d - 7) / 18);   // la vue est inclinée : on corrige la profondeur
+}
+function releaseStick(id) { const p = stickPtr.get(id); if (p === undefined) return; stickPtr.delete(id); sticks[p] = null; input[p].sm = 0; }
+function clearSticks() { stickPtr.clear(); for (let p = 0; p < 4; p++) { sticks[p] = null; input[p].sm = 0; } }
 function syncTouch() {
   for (const i of input) { i.tl = false; i.tr = false; i.tb = false; }
   for (const bi of pointers.values()) { const b = buttons[bi]; if (!b) continue; if (b.act === 'left') input[b.p].tl = true; if (b.act === 'right') input[b.p].tr = true; if (b.act === 'back') input[b.p].tb = true; }
 }
 hud.addEventListener('pointerdown', e => {
   if (gstate !== 'countdown' && gstate !== 'race') return; e.preventDefault();
-  const [x, y] = viewPos(e), bi = hitButton(x, y); if (bi < 0) return;
+  const [x, y] = viewPos(e), bi = hitButton(x, y);
+  if (bi < 0) { const sb = hitStick(x, y); if (sb) { sticks[sb.p] = { p: sb.p, r: sb.r, flip: sb.flip, bx: x, by: y, kx: x, ky: y, dx: 0, dy: 0 }; stickPtr.set(e.pointerId, sb.p); input[sb.p].sm = 0; try { hud.setPointerCapture(e.pointerId); } catch (er) {} } return; }
   pointers.set(e.pointerId, bi); if (buttons[bi].act === 'fire') input[buttons[bi].p].fire = true; syncTouch();
 });
 hud.addEventListener('pointermove', e => {
+  if (stickPtr.has(e.pointerId)) { const s = sticks[stickPtr.get(e.pointerId)]; if (s) { const [x, y] = viewPos(e); moveStick(s, x, y); } return; }
   if (!pointers.has(e.pointerId)) return; const old = buttons[pointers.get(e.pointerId)]; if (!old || (old.act !== 'left' && old.act !== 'right')) return;
   const [x, y] = viewPos(e), bi = hitButton(x, y);
   if (bi >= 0 && buttons[bi].p === old.p && (buttons[bi].act === 'left' || buttons[bi].act === 'right')) { pointers.set(e.pointerId, bi); syncTouch(); }
 });
-const releasePointer = e => { if (pointers.delete(e.pointerId)) syncTouch(); };
+const releasePointer = e => { releaseStick(e.pointerId); if (pointers.delete(e.pointerId)) syncTouch(); };
 hud.addEventListener('pointerup', releasePointer); hud.addEventListener('pointercancel', releasePointer);
 hud.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -109,6 +142,24 @@ function drawHud() {
   for (const k of cars) if (k.human && k.dead <= 0) { projectToView(k.x, k.y + 84, k.z, PV); c.save(); c.translate(PV.x, PV.y); chip(c, 'J' + (k.id + 1), k.color.css, 12); c.restore(); }
   if (camMode === 'close') drawMini(c);
   for (const b of buttons) {
+    if (b.act !== 'stick') continue;
+    const s = sticks[b.p], col = cars[b.p].color.css;
+    if (!s) {                                                                          // au repos : un joystick discret montre où poser le pouce
+      c.globalAlpha = .38; c.fillStyle = 'rgba(15,18,30,.55)'; c.beginPath(); c.arc(b.x, b.y, b.r, 0, TAU); c.fill();
+      c.lineWidth = 3; c.strokeStyle = 'rgba(255,255,255,.9)'; c.stroke(); c.fillStyle = col; c.beginPath(); c.arc(b.x, b.y, b.r * .42, 0, TAU); c.fill(); c.globalAlpha = 1; continue;
+    }
+    c.globalAlpha = .5; c.fillStyle = 'rgba(15,18,30,.6)'; c.beginPath(); c.arc(s.bx, s.by, s.r, 0, TAU); c.fill(); c.globalAlpha = 1;
+    c.lineWidth = 3; c.strokeStyle = 'rgba(255,255,255,.75)'; c.stroke();
+    c.fillStyle = col; c.beginPath(); c.arc(s.kx, s.ky, s.r * .45, 0, TAU); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 3; c.stroke();
+    // flèche autour de la voiture : la direction demandée, telle qu'on la voit à l'écran
+    const car = cars[b.p]; if (input[b.p].sm > 0 && car.dead <= 0) {
+      projectToView(car.x, car.y + 16, car.z, PV); const a = Math.atan2(s.dy, s.dx);
+      c.save(); c.translate(PV.x, PV.y); c.rotate(a); c.globalAlpha = .9; c.fillStyle = col; c.strokeStyle = '#fff'; c.lineWidth = 2.5;
+      c.beginPath(); c.moveTo(78, 0); c.lineTo(56, -14); c.lineTo(61, 0); c.lineTo(56, 14); c.closePath(); c.fill(); c.stroke(); c.restore(); c.globalAlpha = 1;
+    }
+  }
+  for (const b of buttons) {
+    if (b.act === 'stick') continue;
     const car = cars[b.p], i = input[b.p]; let it = car.item; if (car.roul > 0) it = ITEMS[Math.floor(simTime * 14) % ITEMS.length];
     const down = b.act === 'left' ? (i.kl || i.tl) : b.act === 'right' ? (i.kr || i.tr) : b.act === 'back' ? (i.kb || i.tb) : false;
     c.save(); c.translate(b.x, b.y); if (b.flip) c.rotate(Math.PI);
@@ -123,8 +174,9 @@ function drawHud() {
     c.restore();
   }
   for (let p = 0; p < nH; p++) {
-    const bs = buttons.filter(b => b.p === p && (nH > 1 ? b.act !== 'back' : (b.act === 'left' || b.act === 'right'))), car = cars[p]; if (!bs.length) continue;
-    const flip = bs[0].flip, r = bs[0].r, cx = bs.reduce((s, b) => s + b.x, 0) / bs.length, cy = bs[0].y + (flip ? 1 : -1) * (r + 30);
+    const bs = buttons.filter(b => b.p === p && (nH > 1 ? b.act !== 'back' : (b.act === 'left' || b.act === 'right' || b.act === 'stick'))), car = cars[p]; if (!bs.length) continue;
+    const flip = bs[0].flip, cx = bs.reduce((s, b) => s + b.x, 0) / bs.length;
+    const cy = flip ? Math.max(...bs.map(b => b.y + b.r)) + 30 : Math.min(...bs.map(b => b.y - b.r)) - 30;
     const txt = car.finished ? ord(car.rank) + ' · Arrivé' : ord(car.rank) + ' · Tour ' + Math.max(1, Math.min(LAPS, car.lap)) + '/' + LAPS;
     c.save(); c.translate(cx, cy); if (flip) c.rotate(Math.PI);
     const w = chip(c, txt, car.color.css, 15), hp = Math.max(0, car.hp) / 100, bw = w - 26;
@@ -153,6 +205,8 @@ function refreshPlayers() {
   for (let n = 1; n <= maxHumans; n++) { const b = document.createElement('button'); b.type = 'button'; b.id = 'players-' + n; b.textContent = n; b.setAttribute('aria-pressed', n === humans); b.onclick = () => { humans = n; refreshPlayers(); }; box.appendChild(b); }
   $('playersHint').textContent = (humans < 4 ? `L'ordinateur pilote ${4 - humans} voiture${4 - humans > 1 ? 's' : ''}. ` : '') + (maxHumans === 2 ? 'Jusqu\'à 4 joueurs sur tablette.' : '');
 }
+function refreshCtrl() { $('ctrl-stick').setAttribute('aria-pressed', ctrlMode === 'stick'); $('ctrl-buttons').setAttribute('aria-pressed', ctrlMode === 'buttons'); }
+function setCtrl(m) { ctrlMode = m; try { localStorage.setItem('mb-ctrl', m); } catch (e) {} refreshCtrl(); }
 function refreshCam() { $('cam-close').setAttribute('aria-pressed', camMode === 'close'); $('cam-whole').setAttribute('aria-pressed', camMode === 'whole'); $('view').textContent = camMode === 'close' ? 'Vue : proche' : 'Vue : circuit'; }
 function setCam(m) { camMode = m; try { localStorage.setItem('mb-cam', m); } catch (e) {} refreshCam(); }
 function paintThumb(tr) { if (!tr.thumb) return; const x = tr.thumb.getContext('2d'); x.setTransform(tr.thumb.width / WW, 0, 0, tr.thumb.height / WH, 0, 0); paintGround(x, tr, tr.thumb.width, tr.thumb.height); }
@@ -168,7 +222,7 @@ function buildTrackButtons() {
 }
 function fmt(t) { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(2); }
 onRaceEnd = sorted => {
-  topbar.hidden = true; pointers.clear(); syncTouch(); layoutButtons();
+  topbar.hidden = true; pointers.clear(); clearSticks(); syncTouch(); layoutButtons();
   const best = sorted.find(c => c.human);
   $('resTitle').textContent = sorted[0].human ? 'Victoire !' : 'Arrivée';
   $('resSub').textContent = track.def.name + (best ? ' · ' + best.name + ' termine ' + ord(sorted.indexOf(best) + 1) : '');
@@ -184,13 +238,14 @@ function begin() {
   menu.hidden = true; results.hidden = true; topbar.hidden = false; initAudio();
   try { const el = document.documentElement; if (coarse && el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} }).catch(() => {}); } catch (e) {}
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
-  startRace(humans, 'countdown'); layoutButtons(); perfT = perfN = 0;
+  clearSticks(); startRace(humans, 'countdown'); layoutButtons(); perfT = perfN = 0;
   updateCamera(0, camMode === 'close' ? cars.filter(c => c.human) : null, true, 0);
 }
-function toMenu() { results.hidden = true; topbar.hidden = true; menu.hidden = false; startRace(0, 'menu'); layoutButtons(); }
+function toMenu() { results.hidden = true; topbar.hidden = true; menu.hidden = false; clearSticks(); pointers.clear(); syncTouch(); startRace(0, 'menu'); layoutButtons(); }
 $('start').onclick = begin; $('again').onclick = begin; $('toMenu').onclick = toMenu; $('quit').onclick = toMenu;
 $('snd').onclick = () => { setSound(!soundOn); $('snd').textContent = soundOn ? 'Son : oui' : 'Son : non'; };
 $('view').onclick = () => setCam(camMode === 'close' ? 'whole' : 'close');
+$('ctrl-stick').onclick = () => setCtrl('stick'); $('ctrl-buttons').onclick = () => setCtrl('buttons');
 $('cam-close').onclick = () => setCam('close'); $('cam-whole').onclick = () => setCam('whole');
 
 /* ---------- boucle principale ---------- */
@@ -218,7 +273,7 @@ function loadImages() {
 let webglOk = true;
 try { initWorld(glCanvas); } catch (e) { webglOk = false; }
 if (webglOk) {
-  buildTrackButtons(); loadTrackWorld(track); startRace(0, 'menu'); refreshCam(); resize(); loadImages();
+  buildTrackButtons(); loadTrackWorld(track); startRace(0, 'menu'); refreshCam(); refreshCtrl(); resize(); loadImages();
   addEventListener('resize', resize); requestAnimationFrame(frame);
 } else { $('start').disabled = true; document.querySelector('#menu .help').textContent = 'Ce navigateur ne peut pas afficher la 3D (WebGL indisponible). Essaie avec une version récente de Chrome ou de Safari.'; }
-window.__mb = { update, get cars() { return cars; }, get gstate() { return gstate; }, get debris() { return debris.length; }, get track() { return track; }, stats, input, damageCar, explode, useItem, CAM, TRACKS };
+window.__mb = { update, get cars() { return cars; }, get gstate() { return gstate; }, get debris() { return debris.length; }, get track() { return track; }, stats, input, sticks, damageCar, explode, useItem, CAM, TRACKS };
