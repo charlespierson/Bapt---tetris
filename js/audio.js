@@ -42,6 +42,8 @@ const sfx = {
   shield: () => { tone(400, 1200, .3, 'sine', .25); tone(600, 1800, .3, 'sine', .15, .05); }, shieldPop: () => { tone(1400, 300, .2, 'sine', .3); noise(.15, 3000, 800, .2); },
   shock: () => { tone(80, 400, .35, 'sawtooth', .35); noise(.5, 200, 2400, .4); },
   loop: () => tone(200, 1100, .9, 'sine', .22), repair: () => [660, 880, 1100].forEach((f, i) => tone(f, f, .08, 'triangle', .25, i * .07)),
+  full: () => { tone(660, 660, .09, 'triangle', .22); tone(990, 990, .09, 'triangle', .22, .09); tone(1320, 1320, .16, 'triangle', .22, .18); },
+  cut: () => { tone(300, 1500, .5, 'sawtooth', .2); noise(.6, 600, 4000, .35); }, deny: () => { tone(220, 160, .18, 'square', .22); tone(160, 110, .25, 'square', .22, .16); },
   wreck: () => { noise(1, 1200, 50, .9, 'lowpass'); tone(200, 30, .8, 'sawtooth', .4); }, part: () => { noise(.18, 2500, 500, .35); tone(300, 90, .15, 'square', .2); },
 };
 function engineSound(list, live) {

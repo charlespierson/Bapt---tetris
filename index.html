@@ -2,18 +2,19 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap">
 <style>
-/* Mise en page : la course en 3D occupe tout l'écran, l'affichage tête haute est dessiné par-dessus, les panneaux (menu, résultats) flottent au centre. */
+/* Mise en page : la course en 3D occupe tout l'écran (un écran par joueur, celui du haut retourné à deux),
+   l'affichage est dessiné par-dessus, et chaque joueur a sa propre carte de réglages dans son écran. */
 :root{
   --panel:#ffffff; --panel-2:#eef1f7; --ink:#161b2c; --muted:#5d6682; --line:#d5dae8;
-  --accent:#2456e6; --accent-ink:#ffffff; --veil:rgba(18,22,38,.34);
+  --accent:#2456e6; --accent-ink:#ffffff; --ok:#1f9d59; --veil:rgba(18,22,38,.34);
   --font:"Outfit",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --panel:#1b2032; --panel-2:#262d45; --ink:#eef1fb; --muted:#a3acc8; --line:#39415e;
-  --accent:#6f95ff; --accent-ink:#0d1226; --veil:rgba(5,7,14,.5); color-scheme:dark } }
+  --accent:#6f95ff; --accent-ink:#0d1226; --ok:#35d873; --veil:rgba(5,7,14,.5); color-scheme:dark } }
 :root[data-theme="dark"]{
   --panel:#1b2032; --panel-2:#262d45; --ink:#eef1fb; --muted:#a3acc8; --line:#39415e;
-  --accent:#6f95ff; --accent-ink:#0d1226; --veil:rgba(5,7,14,.5); color-scheme:dark }
+  --accent:#6f95ff; --accent-ink:#0d1226; --ok:#35d873; --veil:rgba(5,7,14,.5); color-scheme:dark }
 
 html,body{height:100%}
 body{background:#20242c;color:var(--ink);font-family:var(--font);overflow:hidden;
@@ -27,73 +28,81 @@ body{background:#20242c;color:var(--ink);font-family:var(--font);overflow:hidden
   padding-block:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-bottom,0px));
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .panel{background:var(--panel);border-radius:20px;box-shadow:0 18px 50px rgba(0,0,0,.3);
-  width:min(100%,740px);max-height:100%;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+  width:min(100%,760px);max-height:100%;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
 .head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
 h1 span{color:var(--accent)}
-.sub{color:var(--muted);font-size:14px}
-.row{display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap}
-.field{display:flex;align-items:center;gap:10px}
-.label{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.seg{display:flex;gap:6px}
-.seg button{min-width:44px;height:40px;padding:0 12px;border-radius:12px;border:2px solid var(--line);background:var(--panel-2);
-  color:var(--ink);font:600 16px var(--font);cursor:pointer}
+.sub{color:var(--muted);font-size:14px;min-width:0}
+.row{display:flex;align-items:center;gap:8px 18px;flex-wrap:wrap}
+.field{display:flex;align-items:center;gap:8px;min-width:0}
+.label{font-size:11.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.seg{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.seg button{min-width:42px;min-height:38px;padding:3px 11px;border-radius:11px;border:2px solid var(--line);background:var(--panel-2);
+  color:var(--ink);font:600 15px/1.15 var(--font);cursor:pointer}
+.seg button small{display:block;font-weight:400;font-size:10.5px;opacity:.85}
 .seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.hint{color:var(--muted);font-size:13px;min-width:0;flex:1 1 160px}
 .tracks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .tracks button{padding:0;border:3px solid transparent;border-radius:14px;background:var(--panel-2);color:var(--ink);
   cursor:pointer;overflow:hidden;display:flex;flex-direction:column;font:600 13px var(--font)}
 .tracks button[aria-pressed="true"]{border-color:var(--accent)}
-.tracks canvas{width:100%;aspect-ratio:2/1;display:block}
+.tracks canvas{width:100%;aspect-ratio:9/5;display:block}
 .tracks span{padding:5px 4px 6px;text-align:center}
-.go{height:48px;border:0;border-radius:14px;background:var(--accent);color:var(--accent-ink);
-  font:800 19px var(--font);letter-spacing:.02em;cursor:pointer;flex:1 1 160px}
-.ghost{height:48px;border:2px solid var(--line);border-radius:14px;background:transparent;color:var(--ink);
-  font:600 16px var(--font);cursor:pointer;flex:1 1 160px}
+.go{min-height:46px;border:0;border-radius:14px;background:var(--accent);color:var(--accent-ink);
+  font:800 18px var(--font);letter-spacing:.02em;cursor:pointer;flex:1 1 150px}
+.go.on{background:var(--ok)}
+.ghost{min-height:46px;padding:0 14px;border:2px solid var(--line);border-radius:14px;background:transparent;color:var(--ink);
+  font:600 15px var(--font);cursor:pointer;flex:1 1 110px}
 button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .help{color:var(--muted);font-size:12.5px;line-height:1.45}
-.keys{display:block}
+.keys{display:block;margin-top:4px}
 @media (pointer:coarse){ .keys{display:none} }
 @media (max-width:520px){ .tracks{grid-template-columns:repeat(2,minmax(0,1fr))} }
 
-ol.rank{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-ol.rank li{display:flex;align-items:center;gap:12px;background:var(--panel-2);border-radius:12px;padding:9px 14px;font-size:17px}
-ol.rank .pos{font-weight:800;width:38px}
-ol.rank .chip{width:26px;height:16px;border-radius:5px;flex:none}
+/* cartes des joueurs : chacune est posée sur l'écran de son joueur ; celle du haut est retournée */
+.vcard{position:fixed;display:flex;justify-content:center;align-items:flex-start;padding:8px 10px;pointer-events:none;box-sizing:border-box}
+.vcard.flip{transform:rotate(180deg)}
+.card{pointer-events:auto;background:var(--panel);color:var(--ink);border-radius:16px;box-shadow:0 12px 34px rgba(0,0,0,.35);
+  padding:9px 12px 11px;display:flex;flex-direction:column;gap:8px;width:min(100%,580px);max-height:100%;overflow:auto;box-sizing:border-box}
+.chead{display:flex;align-items:center;gap:8px;font-size:17px}
+.dot{width:14px;height:14px;border-radius:50%;flex:none}
+.link{margin-left:auto;border:0;background:transparent;color:var(--muted);font:600 13px var(--font);cursor:pointer;padding:6px 4px}
+.fields{display:flex;flex-wrap:wrap;gap:6px 16px}
+.fields .field{flex:1 1 250px}
+.fields .label{width:92px;flex:none}
+.card > .go{flex:none}
+.val{min-width:54px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums}
+.wait{font-size:12px;color:var(--muted);text-align:center}
+ol.rank{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+ol.rank li{display:flex;align-items:center;gap:10px;background:var(--panel-2);border-radius:11px;padding:6px 12px;font-size:15px}
+ol.rank li.me{outline:2px solid var(--accent)}
+ol.rank .pos{font-weight:800;width:36px}
+ol.rank .chip{width:24px;height:14px;border-radius:5px;flex:none}
 ol.rank .who{flex:1;font-weight:600;min-width:0}
 ol.rank .time{color:var(--muted);font-variant-numeric:tabular-nums}
 
 #topbar{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);display:flex;gap:8px}
-#topbar button{height:32px;padding:0 13px;border-radius:16px;border:0;background:rgba(15,18,30,.6);color:#fff;
-  font:600 13px var(--font);cursor:pointer;white-space:nowrap}
+#topbar.mid{top:50%;transform:translate(-50%,-50%)}
+#topbar button{height:30px;padding:0 12px;border-radius:15px;border:0;background:rgba(15,18,30,.7);color:#fff;
+  font:600 12.5px var(--font);cursor:pointer;white-space:nowrap}
 </style>
 
 <canvas id="gl"></canvas>
 <canvas id="hud"></canvas>
 <div id="probe"></div>
-<div id="topbar" hidden><button id="quit" type="button">Menu</button><button id="snd" type="button">Son : oui</button><button id="view" type="button">Vue : proche</button></div>
+<div id="topbar" hidden><button id="quit" type="button" data-t="menu">Menu</button><button id="snd" type="button">Son : oui</button></div>
+<div class="vcard" id="card0" hidden></div>
+<div class="vcard" id="card1" hidden></div>
 
 <div class="overlay" id="menu">
   <div class="panel">
-    <div class="head"><h1>Mini <span>Bolides</span></h1><div class="sub">Buggies télécommandés : 4 voitures, 5 tours, tous les coups sont permis</div></div>
+    <div class="head"><h1>Mini <span>Bolides</span></h1><div class="sub" data-t="sub">Buggies télécommandés : 4 voitures, 7 tours, tous les coups sont permis</div></div>
     <div class="row">
-      <div class="field"><div class="label">Joueurs</div><div class="seg" id="players"></div></div>
-      <div class="field"><div class="label">Direction</div><div class="seg"><button type="button" id="ctrl-stick">Joystick</button><button type="button" id="ctrl-buttons">Boutons ◀ ▶</button></div></div>
-      <div class="field"><div class="label">Caméra</div><div class="seg"><button type="button" id="cam-close">Proche</button><button type="button" id="cam-whole">Circuit entier</button></div></div>
-      <div class="hint" id="playersHint"></div>
+      <div class="field"><div class="label" data-t="players">Joueurs</div><div class="seg"><button type="button" id="pl-1" data-t="p1">1 joueur</button><button type="button" id="pl-2" data-t="p2">2 joueurs, face à face</button></div></div>
+      <div class="field"><div class="label" data-t="language">Langue</div><div class="seg"><button type="button" id="lang-fr">Français</button><button type="button" id="lang-en">English</button></div></div>
     </div>
     <div class="tracks" id="tracks"></div>
-    <div class="row"><button class="go" id="start" type="button">Départ</button></div>
-    <div class="help">Roule sur une caisse « ? » pour gagner un objet : turbo, missile, flaque d'huile, mine, bouclier ou onde de choc. Les chocs abîment la voiture ; la croix verte la répare. Avec le joystick, glisse le pouce vers l'endroit de l'écran où tu veux aller : la voiture tourne toute seule dans cette direction.
-      <span class="keys">Clavier : J1 ← → ↑ (objet) ↓ (marche arrière) · J2 A D W S · J3 J L I K · J4 pavé numérique 4 6 8 5 (positions d'un clavier QWERTY). L'accélération est automatique.</span></div>
-  </div>
-</div>
-
-<div class="overlay" id="results" hidden>
-  <div class="panel">
-    <div class="head"><h1 id="resTitle">Arrivée</h1><div class="sub" id="resSub"></div></div>
-    <ol class="rank" id="rank"></ol>
-    <div class="row"><button class="go" id="again" type="button">Rejouer</button><button class="ghost" id="toMenu" type="button">Changer de circuit</button></div>
+    <div class="row"><button class="go" id="next" type="button" data-t="next">Continuer</button></div>
+    <div class="help"><span data-t="help"></span><span class="keys" data-t="keys"></span></div>
   </div>
 </div>
 
